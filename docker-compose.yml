@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fanpad_postgres
+    environment:
+      POSTGRES_USER: fanpad
+      POSTGRES_PASSWORD: fanpad_dev
+      POSTGRES_DB: fanpad_health
+    ports:
+      - "5432:5432"
+    volumes:
+      - fanpad_pgdata:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d  # auto-runs on first start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fanpad -d fanpad_health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fanpad_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fanpad_health;Username=fanpad;Password=fanpad_dev
+      - Anthropic__ApiKey=${ANTHROPIC_API_KEY}
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build:
+      context: ./frontend/fanpad-dashboard
+      dockerfile: Dockerfile
+    container_name: fanpad_frontend
+    depends_on:
+      - backend
+    ports:
+      - "4200:80"
+
+volumes:
+  fanpad_pgdata:
