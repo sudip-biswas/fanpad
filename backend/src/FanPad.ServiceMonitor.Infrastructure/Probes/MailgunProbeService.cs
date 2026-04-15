@@ -58,7 +58,7 @@ public class MailgunProbeService : BaseProbeService
                 await HttpClient.GetAsync("https://status.mailgun.com/api/v2/summary.json", ct));
 
             if (!response.IsSuccessStatusCode)
-                return ProbeResult.Degraded(ProbeSource.ExternalStatusPage, latencyMs, 0, 100,
+                return ProbeResult.Degraded(ProbeSource.ExternalStatusPage, latencyMs, 0m,
                     "STATUS_PAGE_ERROR", $"Status page returned HTTP {(int)response.StatusCode}");
 
             var json = await response.Content.ReadAsStringAsync(ct);
@@ -80,7 +80,7 @@ public class MailgunProbeService : BaseProbeService
 
             return healthStatus == HealthStatus.Operational
                 ? ProbeResult.Operational(ProbeSource.ExternalStatusPage, latencyMs)
-                : ProbeResult.Degraded(ProbeSource.ExternalStatusPage, latencyMs, 80m, 20m,
+                : ProbeResult.Degraded(ProbeSource.ExternalStatusPage, latencyMs, 80m,
                     $"MAILGUN_{indicatorStr.ToUpper()}", $"Mailgun status page reports: {indicatorStr}");
         }
         catch (Exception ex)

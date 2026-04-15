@@ -1,4 +1,3 @@
-using Anthropic.SDK;
 using FanPad.ServiceMonitor.Api.BackgroundServices;
 using FanPad.ServiceMonitor.Api.Hubs;
 using FanPad.ServiceMonitor.Core.Interfaces;
@@ -46,11 +45,10 @@ builder.Services.AddCors(opts =>
             .AllowAnyMethod()
             .AllowCredentials()));
 
-// ─── Anthropic SDK ────────────────────────────────────────────────────────────
+// ─── Anthropic HTTP Client ────────────────────────────────────────────────────
 
-builder.Services.AddSingleton(new AnthropicClient(
-    builder.Configuration["Anthropic:ApiKey"]
-    ?? throw new InvalidOperationException("Anthropic:ApiKey is required")));
+builder.Services.AddHttpClient("anthropic");
+builder.Services.AddHttpClient(); // default client for probes
 
 // ─── Health Probes ────────────────────────────────────────────────────────────
 
@@ -95,11 +93,11 @@ app.UseRouting();
 app.MapControllers();
 app.MapHub<ServiceStatusHub>("/hubs/status");
 
-// Apply pending EF migrations on startup
+// Create schema if it doesn't exist (dev mode — no migration files needed)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
+    await db.Database.EnsureCreatedAsync();
 }
 
 app.Run();

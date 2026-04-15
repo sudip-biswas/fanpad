@@ -1,14 +1,14 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Anthropic.SDK;
-using Anthropic.SDK.Constants;
-using Anthropic.SDK.Messaging;
+using System.Text.Json.Nodes;
 using FanPad.ServiceMonitor.Core.Enums;
 using FanPad.ServiceMonitor.Core.Interfaces;
 using FanPad.ServiceMonitor.Core.Models;
 using FanPad.ServiceMonitor.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace FanPad.ServiceMonitor.Infrastructure.Agent;
@@ -27,7 +27,8 @@ namespace FanPad.ServiceMonitor.Infrastructure.Agent;
 /// </summary>
 public class AgentOrchestrationService : IAgentOrchestrationService
 {
-    private readonly AnthropicClient _anthropic;
+    private readonly HttpClient _httpClient;
+    private readonly string _apiKey;
     private readonly IEnumerable<IHealthProbeService> _probes;
     private readonly IRoutingService _routing;
     private readonly AppDbContext _db;
@@ -73,7 +74,82 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
         WORK PLAN FORMAT:
         Always produce a concise work plan in plain English readable by a non-technical campaign manager.
-        Include: what happened, what you recommend, what the operator needs to do, and estimated impact.
+        Structure it exactly like the examples below. Do not use technical jargon, error codes, or stack traces.
+        Label the section "Work Plan:" so the system can extract it.
+
+        EXAMPLE WORK PLAN — Complete outage, failover recommended:
+        ---
+        Work Plan:
+        What happened: Mailgun is completely unreachable as of 14:32 UTC. Our internal test send
+        failed with zero delivery, and Mailgun's own status page confirms a service outage.
+
+        What we're doing: We're requesting your approval to route all outbound email through
+        AWS SES (our backup provider) until Mailgun recovers.
+
+        What you need to do: Review this recommendation in the Routing tab and click
+        "Approve Failover." This takes about 5 seconds to complete.
+
+        Impact on campaigns: The "Summer Tour Announcement" email campaign (scheduled 16:00 UTC)
+        will be held until the failover is approved. Once approved, it will send normally through SES.
+        No messages will be lost — they'll be delayed by however long approval takes.
+
+        When to revert: We'll notify you when Mailgun has passed 3 consecutive health checks.
+        Typically this takes 15–60 minutes after Mailgun resolves their incident.
+        ---
+
+        EXAMPLE WORK PLAN — Partial degradation, incident opened, monitoring:
+        ---
+        Work Plan:
+        What happened: Mailgun is degraded — our probes show a 38% error rate and 4.8 second
+        average delivery latency over the last 10 minutes. Mailgun's status page does not yet
+        show an incident, but our internal data suggests real delivery problems.
+
+        What we're doing: We've opened an incident and will continue monitoring closely.
+        We are NOT recommending failover yet because some messages are still getting through.
+
+        What you need to do: No action needed right now. Keep an eye on the Incidents tab.
+        If the error rate climbs above 50% or stays above 15% for another 10 minutes,
+        we'll escalate to a failover recommendation automatically.
+
+        Impact on campaigns: Campaigns may experience delayed delivery. We recommend
+        postponing any high-priority launches by 30 minutes while we monitor.
+        ---
+
+        EXAMPLE WORK PLAN — Both email providers down, hold all campaigns:
+        ---
+        Work Plan:
+        What happened: Both Mailgun and AWS SES are currently unreachable. This is an
+        unusual situation — we have no healthy email provider to route through.
+
+        What we're doing: All email campaigns have been placed on hold automatically.
+        SMS campaigns are unaffected and proceeding normally.
+
+        What you need to do: Do not approve any email failover — there is nowhere to route.
+        Monitor the Incidents tab. Notify affected artists that email sends are paused.
+        We will alert you the moment either provider recovers.
+
+        Impact: All outbound email is paused. SMS-only campaigns continue normally.
+        Estimated duration: unknown — this depends on external provider recovery.
+        ---
+
+        EXAMPLE WORK PLAN — Recovery detected, revert recommended:
+        ---
+        Work Plan:
+        What happened: Mailgun (our primary email provider) was in outage. We routed
+        email through AWS SES as a fallback.
+
+        Good news: Mailgun has now passed 3 consecutive health checks with 100% delivery
+        and normal latency (under 300ms). The outage appears fully resolved.
+
+        What we're doing: Recommending that you revert email routing back to Mailgun.
+
+        What you need to do: Click "Approve Revert" or use the "Revert to Primary" button
+        in the Routing tab. This is optional — SES will continue to work if you prefer
+        to wait longer before switching back.
+
+        Impact: Campaigns will resume through Mailgun. No messages will be affected —
+        the switch is seamless.
+        ---
 
         REVERT TO PRIMARY:
         - After 3 consecutive clean probes on the original primary, recommend revert.
@@ -81,13 +157,16 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         """;
 
     public AgentOrchestrationService(
-        AnthropicClient anthropic,
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
         IEnumerable<IHealthProbeService> probes,
         IRoutingService routing,
         AppDbContext db,
         ILogger<AgentOrchestrationService> logger)
     {
-        _anthropic = anthropic;
+        _httpClient = httpClientFactory.CreateClient("anthropic");
+        _apiKey = configuration["Anthropic:ApiKey"]
+            ?? throw new InvalidOperationException("Anthropic:ApiKey is required");
         _probes = probes;
         _routing = routing;
         _db = db;
@@ -175,16 +254,59 @@ public class AgentOrchestrationService : IAgentOrchestrationService
         // Gather current state summary to inject as the first user message
         var inputSummary = await BuildInputSummaryAsync(ct);
 
-        var messages = new List<Message>
+        // Build tools JSON manually to guarantee correct lowercase JSON Schema field names.
+        // Serializing SDK types directly can produce PascalCase keys (e.g. "Enum", "Type")
+        // which are rejected by Anthropic's JSON Schema draft 2020-12 validator.
+        var toolsArray = new JsonArray();
+        foreach (var tool in AgentTools.GetAllTools())
         {
-            new()
+            var schema = tool.InputSchema;
+            var propsObj = new JsonObject();
+            if (schema.Properties != null)
             {
-                Role = RoleType.User,
-                Content = new List<ContentBase>
+                foreach (var kvp in schema.Properties)
                 {
-                    new TextContent
+                    var prop = kvp.Value;
+                    var propObj = new JsonObject();
+                    if (!string.IsNullOrEmpty(prop.Type)) propObj["type"] = prop.Type;
+                    if (!string.IsNullOrEmpty(prop.Description)) propObj["description"] = prop.Description;
+                    if (prop.Enum is { Length: > 0 })
                     {
-                        Text = campaignId.HasValue
+                        var enumArr = new JsonArray();
+                        foreach (var e in prop.Enum) enumArr.Add((JsonNode)e);
+                        propObj["enum"] = enumArr;
+                    }
+                    propsObj[kvp.Key] = propObj;
+                }
+            }
+            var schemaObj = new JsonObject { ["type"] = "object", ["properties"] = propsObj };
+            if (schema.Required is { Count: > 0 })
+            {
+                var reqArr = new JsonArray();
+                foreach (var r in schema.Required) reqArr.Add((JsonNode)r);
+                schemaObj["required"] = reqArr;
+            }
+            toolsArray.Add(new JsonObject
+            {
+                ["name"] = tool.Name,
+                ["description"] = tool.Description,
+                ["input_schema"] = schemaObj
+            });
+        }
+        var toolsNode = (JsonNode)toolsArray;
+
+        // Messages kept as JsonNodes to avoid SDK type coupling
+        var messages = new List<JsonNode>
+        {
+            new JsonObject
+            {
+                ["role"] = "user",
+                ["content"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["type"] = "text",
+                        ["text"] = campaignId.HasValue
                             ? $"Please evaluate the campaign gate for campaign ID {campaignId}. Context:\n{inputSummary}"
                             : $"Please perform a full service health evaluation. Context:\n{inputSummary}"
                     }
@@ -192,71 +314,90 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             }
         };
 
-        var tools = AgentTools.GetAllTools();
         string? finalDecision = null;
         string? finalReasoning = null;
         string? workPlan = null;
-        int? promptTokens = null;
-        int? completionTokens = null;
+        int promptTokens = 0;
+        int completionTokens = 0;
 
         // Agentic loop — continue until the model stops using tools
         for (var iteration = 0; iteration < 10; iteration++)
         {
-            var response = await _anthropic.Messages.GetClaudeMessageAsync(
-                new MessageParameters
-                {
-                    Model = AnthropicModels.Claude35Sonnet,
-                    MaxTokens = 4096,
-                    System = new List<SystemMessage> { new() { Text = SystemPrompt } },
-                    Messages = messages,
-                    Tools = tools
-                }, ct);
-
-            promptTokens = (promptTokens ?? 0) + response.Usage.InputTokens;
-            completionTokens = (completionTokens ?? 0) + response.Usage.OutputTokens;
-
-            // Collect text reasoning
-            foreach (var block in response.Content)
+            var requestBody = new JsonObject
             {
-                if (block is TextContent txt && !string.IsNullOrWhiteSpace(txt.Text))
-                    finalReasoning = (finalReasoning ?? "") + txt.Text + "\n";
+                ["model"] = "claude-sonnet-4-6",
+                ["max_tokens"] = 4096,
+                ["system"] = SystemPrompt,
+                ["messages"] = new JsonArray(messages.Select(m => m.DeepClone()).ToArray()),
+                ["tools"] = toolsNode!.DeepClone()
+            };
+
+            using var httpResp = await CallAnthropicAsync(requestBody, ct);
+            using var doc = await JsonDocument.ParseAsync(
+                await httpResp.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("usage", out var usage))
+            {
+                promptTokens += usage.TryGetProperty("input_tokens", out var it) ? it.GetInt32() : 0;
+                completionTokens += usage.TryGetProperty("output_tokens", out var ot) ? ot.GetInt32() : 0;
             }
 
-            if (response.StopReason == StopReason.EndTurn)
+            var stopReason = root.TryGetProperty("stop_reason", out var sr) ? sr.GetString() : null;
+            var content = root.GetProperty("content");
+
+            // Collect text reasoning
+            foreach (var block in content.EnumerateArray())
             {
-                // Agent is done - extract final decision and work plan from reasoning
+                if (block.TryGetProperty("type", out var bt) && bt.GetString() == "text"
+                    && block.TryGetProperty("text", out var txt)
+                    && !string.IsNullOrWhiteSpace(txt.GetString()))
+                {
+                    finalReasoning = (finalReasoning ?? "") + txt.GetString() + "\n";
+                }
+            }
+
+            if (stopReason == "end_turn")
+            {
                 workPlan = ExtractWorkPlan(finalReasoning);
                 finalDecision = ExtractDecision(finalReasoning);
                 break;
             }
 
-            if (response.StopReason == StopReason.ToolUse)
+            if (stopReason == "tool_use")
             {
-                // Process tool calls and add results back
-                var toolResultContent = new List<ContentBase>();
-
-                foreach (var block in response.Content.OfType<ToolUseContent>())
+                // Add assistant turn — preserve the full content array as-is
+                messages.Add(new JsonObject
                 {
-                    var toolResult = await ExecuteToolAsync(block, actionsTaken, ct);
-                    toolResultContent.Add(new ToolResultContent
+                    ["role"] = "assistant",
+                    ["content"] = JsonNode.Parse(content.GetRawText())
+                });
+
+                // Process tool calls
+                var toolResults = new JsonArray();
+                foreach (var block in content.EnumerateArray())
+                {
+                    if (!block.TryGetProperty("type", out var typeProp)
+                        || typeProp.GetString() != "tool_use") continue;
+
+                    var toolId   = block.GetProperty("id").GetString()!;
+                    var toolName = block.GetProperty("name").GetString()!;
+                    var toolInput = block.GetProperty("input");
+
+                    var result = await ExecuteToolAsync(toolId, toolName, toolInput, actionsTaken, ct);
+                    toolResults.Add(new JsonObject
                     {
-                        ToolUseId = block.Id,
-                        Content = toolResult
+                        ["type"] = "tool_result",
+                        ["tool_use_id"] = toolId,
+                        ["content"] = result
                     });
                 }
 
-                // Add assistant turn with tool use
-                messages.Add(new Message
-                {
-                    Role = RoleType.Assistant,
-                    Content = response.Content
-                });
-
                 // Add user turn with tool results
-                messages.Add(new Message
+                messages.Add(new JsonObject
                 {
-                    Role = RoleType.User,
-                    Content = toolResultContent
+                    ["role"] = "user",
+                    ["content"] = toolResults
                 });
             }
         }
@@ -273,7 +414,7 @@ public class AgentOrchestrationService : IAgentOrchestrationService
             DecisionDetail = workPlan,
             ActionsTaken = JsonDocument.Parse(JsonSerializer.Serialize(actionsTaken)),
             WorkPlan = workPlan,
-            ModelUsed = AnthropicModels.Claude35Sonnet,
+            ModelUsed = "claude-sonnet-4-6",
             PromptTokens = promptTokens,
             CompletionTokens = completionTokens,
             DecidedAt = DateTime.UtcNow,
@@ -285,41 +426,66 @@ public class AgentOrchestrationService : IAgentOrchestrationService
 
         _logger.LogInformation(
             "Agent decision complete: {Decision} in {DurationMs}ms | tokens: {Tokens}",
-            decision.Decision, decision.DurationMs, (promptTokens ?? 0) + (completionTokens ?? 0));
+            decision.Decision, decision.DurationMs, promptTokens + completionTokens);
 
         return decision;
     }
 
+    // ─── Anthropic HTTP Call ──────────────────────────────────────────────────
+
+    private async Task<HttpResponseMessage> CallAnthropicAsync(JsonObject body, CancellationToken ct)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages")
+        {
+            Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("x-api-key", _apiKey);
+        request.Headers.Add("anthropic-version", "2023-06-01");
+
+        var response = await _httpClient.SendAsync(request, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errBody = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogError("Anthropic API error {Status}: {Body}", response.StatusCode, errBody);
+            response.EnsureSuccessStatusCode(); // throws
+        }
+
+        return response;
+    }
+
     // ─── Tool Execution Dispatcher ────────────────────────────────────────────
 
-    private async Task<string> ExecuteToolAsync(ToolUseContent toolUse, List<object> actionsTaken, CancellationToken ct)
+    private async Task<string> ExecuteToolAsync(
+        string toolId, string toolName, JsonElement toolInput,
+        List<object> actionsTaken, CancellationToken ct)
     {
-        _logger.LogDebug("Agent tool call: {ToolName} | input: {Input}", toolUse.Name, toolUse.Input);
+        _logger.LogDebug("Agent tool call: {ToolName} | id: {ToolId}", toolName, toolId);
 
         try
         {
-            var result = toolUse.Name switch
+            var result = toolName switch
             {
-                AgentTools.CheckExternalStatus  => await Tool_CheckExternalStatus(toolUse.Input, ct),
-                AgentTools.RunInternalProbe     => await Tool_RunInternalProbe(toolUse.Input, ct),
-                AgentTools.GetHealthHistory     => await Tool_GetHealthHistory(toolUse.Input, ct),
+                AgentTools.CheckExternalStatus  => await Tool_CheckExternalStatus(toolInput, ct),
+                AgentTools.RunInternalProbe     => await Tool_RunInternalProbe(toolInput, ct),
+                AgentTools.GetHealthHistory     => await Tool_GetHealthHistory(toolInput, ct),
                 AgentTools.GetOpenIncidents     => await Tool_GetOpenIncidents(ct),
                 AgentTools.GetRoutingState      => await Tool_GetRoutingState(ct),
                 AgentTools.GetPendingCampaigns  => await Tool_GetPendingCampaigns(ct),
-                AgentTools.SubmitFailoverRec    => await Tool_SubmitFailoverRecommendation(toolUse.Input, ct),
-                AgentTools.OpenIncident         => await Tool_OpenIncident(toolUse.Input, ct),
-                AgentTools.ResolveIncident      => await Tool_ResolveIncident(toolUse.Input, ct),
-                AgentTools.HoldCampaign         => await Tool_HoldCampaign(toolUse.Input, ct),
-                AgentTools.ReleaseCampaign      => await Tool_ReleaseCampaign(toolUse.Input, ct),
-                _ => $"{{\"error\": \"Unknown tool: {toolUse.Name}\"}}"
+                AgentTools.SubmitFailoverRec    => await Tool_SubmitFailoverRecommendation(toolInput, ct),
+                AgentTools.OpenIncident         => await Tool_OpenIncident(toolInput, ct),
+                AgentTools.ResolveIncident      => await Tool_ResolveIncident(toolInput, ct),
+                AgentTools.HoldCampaign         => await Tool_HoldCampaign(toolInput, ct),
+                AgentTools.ReleaseCampaign      => await Tool_ReleaseCampaign(toolInput, ct),
+                _ => $"{{\"error\": \"Unknown tool: {toolName}\"}}"
             };
 
-            actionsTaken.Add(new { tool = toolUse.Name, input = toolUse.Input, result });
+            actionsTaken.Add(new { tool = toolName, result });
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Tool {ToolName} threw exception", toolUse.Name);
+            _logger.LogError(ex, "Tool {ToolName} threw exception", toolName);
             return JsonSerializer.Serialize(new { error = ex.Message });
         }
     }

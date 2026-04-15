@@ -1,6 +1,7 @@
 using FanPad.ServiceMonitor.Api.Hubs;
 using FanPad.ServiceMonitor.Core.Enums;
 using FanPad.ServiceMonitor.Core.Interfaces;
+using ServiceProvider = FanPad.ServiceMonitor.Core.Enums.ServiceProvider;
 using FanPad.ServiceMonitor.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;

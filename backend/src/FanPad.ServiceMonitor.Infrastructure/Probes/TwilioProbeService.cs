@@ -79,7 +79,7 @@ public class TwilioProbeService : BaseProbeService
 
             return status == HealthStatus.Operational
                 ? ProbeResult.Operational(ProbeSource.ExternalStatusPage, latencyMs)
-                : ProbeResult.Degraded(ProbeSource.ExternalStatusPage, latencyMs, 70m, 30m,
+                : ProbeResult.Degraded(ProbeSource.ExternalStatusPage, latencyMs, 70m,
                     $"TWILIO_{status}", $"Twilio status page reports: {status}");
         }
         catch (Exception ex)

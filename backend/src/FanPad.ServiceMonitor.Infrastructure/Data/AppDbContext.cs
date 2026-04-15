@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("service_configs");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Provider).HasConversion<string>().HasColumnName("provider");
             e.Property(x => x.ServiceType).HasConversion<string>().HasColumnName("service_type");
             e.Property(x => x.DisplayName).HasColumnName("display_name");
@@ -42,6 +43,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("health_check_results");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.ServiceConfigId).HasColumnName("service_config_id");
             e.Property(x => x.CheckedAt).HasColumnName("checked_at");
             e.Property(x => x.Status).HasConversion<string>().HasColumnName("status");
@@ -64,6 +66,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("routing_states");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.ServiceType).HasConversion<string>().HasColumnName("service_type");
             e.Property(x => x.ActiveServiceConfigId).HasColumnName("active_service_config_id");
             e.Property(x => x.Action).HasConversion<string>().HasColumnName("action");
@@ -80,6 +83,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("incidents");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.ServiceConfigId).HasColumnName("service_config_id");
             e.Property(x => x.Title).HasColumnName("title");
             e.Property(x => x.Description).HasColumnName("description");
@@ -100,6 +104,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("incident_updates");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.IncidentId).HasColumnName("incident_id");
             e.Property(x => x.Message).HasColumnName("message");
             e.Property(x => x.Author).HasColumnName("author");
@@ -113,6 +118,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("agent_decisions");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.TriggerType).HasColumnName("trigger_type");
             e.Property(x => x.TriggerContext).HasColumnName("trigger_context").HasColumnType("jsonb");
             e.Property(x => x.InputSummary).HasColumnName("input_summary");
@@ -135,6 +141,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("failover_events");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.ServiceType).HasConversion<string>().HasColumnName("service_type");
             e.Property(x => x.FromProvider).HasConversion<string>().HasColumnName("from_provider");
             e.Property(x => x.ToProvider).HasConversion<string>().HasColumnName("to_provider");
@@ -157,6 +164,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("failover_approvals");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.AgentDecisionId).HasColumnName("agent_decision_id");
             e.Property(x => x.ServiceType).HasConversion<string>().HasColumnName("service_type");
             e.Property(x => x.FromProvider).HasConversion<string>().HasColumnName("from_provider");
@@ -178,6 +186,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("campaigns");
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.Name).HasColumnName("name");
             e.Property(x => x.ArtistName).HasColumnName("artist_name");
             e.Property(x => x.ServiceTypes)
