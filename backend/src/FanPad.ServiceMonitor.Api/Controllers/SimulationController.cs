@@ -42,13 +42,13 @@ public class SimulationController : ControllerBase
                 id = s.ToString(),
                 name = FormatScenarioName(s),
                 description = GetScenarioDescription(s),
-                affected_services = GetAffectedServices(s)
+                affectedServices = GetAffectedServices(s)
             });
 
         return Ok(new
         {
-            active_scenario = _simulator.ActiveScenario.ToString(),
-            is_simulation_active = _simulator.IsSimulationActive,
+            activeScenario = _simulator.ActiveScenario.ToString(),
+            isSimulationActive = _simulator.IsSimulationActive,
             scenarios
         });
     }
@@ -81,19 +81,19 @@ public class SimulationController : ControllerBase
                 {
                     id = decision.Id,
                     decision = decision.Decision,
-                    work_plan = decision.WorkPlan,
-                    decided_at = decision.DecidedAt
+                    workPlan = decision.WorkPlan,
+                    decidedAt = decision.DecidedAt
                 }, ct);
 
             return Ok(new
             {
                 scenario = scenario.ToString(),
                 activated = true,
-                agent_decision = new
+                agentDecision = new
                 {
                     id = decision.Id,
                     decision = decision.Decision,
-                    work_plan = decision.WorkPlan
+                    workPlan = decision.WorkPlan
                 }
             });
         }
@@ -109,9 +109,9 @@ public class SimulationController : ControllerBase
         _simulator.ClearScenario();
 
         await _hub.Clients.Group(ServiceStatusHub.DashboardGroup)
-            .SendAsync(HubEvents.SimulationCleared, new { previous_scenario = previous.ToString() }, ct);
+            .SendAsync(HubEvents.SimulationCleared, new { previousScenario = previous.ToString() }, ct);
 
-        return Ok(new { cleared = true, previous_scenario = previous.ToString() });
+        return Ok(new { cleared = true, previousScenario = previous.ToString() });
     }
 
     /// <summary>GET /api/simulation/status — Current simulation status.</summary>
@@ -119,8 +119,8 @@ public class SimulationController : ControllerBase
     public IActionResult GetStatus() =>
         Ok(new
         {
-            is_active = _simulator.IsSimulationActive,
-            active_scenario = _simulator.ActiveScenario.ToString(),
+            isActive = _simulator.IsSimulationActive,
+            activeScenario = _simulator.ActiveScenario.ToString(),
             description = GetScenarioDescription(_simulator.ActiveScenario)
         });
 

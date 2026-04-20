@@ -83,9 +83,9 @@ public class HealthMonitorBackgroundService : BackgroundService
             {
                 id = decision.Id,
                 decision = decision.Decision,
-                work_plan = decision.WorkPlan,
-                decided_at = decision.DecidedAt,
-                duration_ms = decision.DurationMs
+                workPlan = decision.WorkPlan,
+                decidedAt = decision.DecidedAt,
+                durationMs = decision.DurationMs
             }, ct);
 
         if (_degradationDetected)

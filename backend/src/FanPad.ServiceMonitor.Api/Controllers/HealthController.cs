@@ -67,23 +67,23 @@ public class HealthController : ControllerBase
             {
                 id = config.Id,
                 provider = config.Provider.ToString(),
-                service_type = config.ServiceType.ToString(),
-                display_name = config.DisplayName,
-                is_primary = config.IsPrimary,
-                is_active_route = route != null,
+                serviceType = config.ServiceType.ToString(),
+                displayName = config.DisplayName,
+                isPrimary = config.IsPrimary,
+                isActiveRoute = route != null,
                 status = result?.Status.ToString() ?? "unknown",
-                latency_ms = result?.LatencyMs,
-                success_rate = result?.SuccessRate,
-                error_rate = result?.ErrorRate,
-                last_checked = result?.CheckedAt,
-                is_simulated = result?.IsSimulated ?? false,
-                simulation_scenario = result?.SimulationScenario,
-                open_incidents = incidents.Select(i => new
+                latencyMs = result?.LatencyMs,
+                successRate = result?.SuccessRate,
+                errorRate = result?.ErrorRate,
+                lastChecked = result?.CheckedAt,
+                isSimulated = result?.IsSimulated ?? false,
+                simulationScenario = result?.SimulationScenario,
+                openIncidents = incidents.Select(i => new
                 {
                     id = i.Id,
                     title = i.Title,
                     severity = i.Severity.ToString(),
-                    opened_at = i.OpenedAt
+                    openedAt = i.OpenedAt
                 })
             };
         });
@@ -106,17 +106,17 @@ public class HealthController : ControllerBase
             {
                 id = decision.Id,
                 decision = decision.Decision,
-                work_plan = decision.WorkPlan,
-                decided_at = decision.DecidedAt
+                workPlan = decision.WorkPlan,
+                decidedAt = decision.DecidedAt
             }, ct);
 
         return Ok(new
         {
-            decision_id = decision.Id,
+            decisionId = decision.Id,
             decision = decision.Decision,
-            work_plan = decision.WorkPlan,
+            workPlan = decision.WorkPlan,
             reasoning = decision.Reasoning,
-            duration_ms = decision.DurationMs
+            durationMs = decision.DurationMs
         });
     }
 
@@ -143,15 +143,15 @@ public class HealthController : ControllerBase
             {
                 id = h.Id,
                 provider = h.ServiceConfig!.Provider.ToString(),
-                service_type = h.ServiceConfig.ServiceType.ToString(),
-                checked_at = h.CheckedAt,
+                serviceType = h.ServiceConfig.ServiceType.ToString(),
+                checkedAt = h.CheckedAt,
                 status = h.Status.ToString(),
-                latency_ms = h.LatencyMs,
-                success_rate = h.SuccessRate,
-                error_rate = h.ErrorRate,
-                error_code = h.ErrorCode,
-                is_simulated = h.IsSimulated,
-                simulation_scenario = h.SimulationScenario
+                latencyMs = h.LatencyMs,
+                successRate = h.SuccessRate,
+                errorRate = h.ErrorRate,
+                errorCode = h.ErrorCode,
+                isSimulated = h.IsSimulated,
+                simulationScenario = h.SimulationScenario
             })
             .ToListAsync(ct);
 
@@ -168,14 +168,14 @@ public class HealthController : ControllerBase
             .Select(d => new
             {
                 id = d.Id,
-                trigger_type = d.TriggerType,
+                triggerType = d.TriggerType,
                 decision = d.Decision,
-                decision_detail = d.DecisionDetail,
-                work_plan = d.WorkPlan,
+                decisionDetail = d.DecisionDetail,
+                workPlan = d.WorkPlan,
                 reasoning = d.Reasoning,
-                decided_at = d.DecidedAt,
-                duration_ms = d.DurationMs,
-                model_used = d.ModelUsed
+                decidedAt = d.DecidedAt,
+                durationMs = d.DurationMs,
+                modelUsed = d.ModelUsed
             })
             .ToListAsync(ct);
 

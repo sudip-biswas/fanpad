@@ -6,18 +6,18 @@
 -- ─────────────────────────────────────────────
 
 INSERT INTO service_configs (id, provider, service_type, display_name, is_primary, priority, is_enabled, config_json, status_page_url, created_at, updated_at) VALUES
--- Email: Mailgun (primary)
-('a1000000-0000-0000-0000-000000000001', 'mailgun', 'email', 'Mailgun', TRUE,  1, TRUE,
+-- Email: Mailgun (primary) — provider/service_type must match C# enum names (PascalCase)
+('a1000000-0000-0000-0000-000000000001', 'Mailgun', 'Email', 'Mailgun', TRUE,  1, TRUE,
  '{"api_base": "https://api.mailgun.net/v3", "domain": "sandbox.mailgun.org", "test_recipient": "health@fanpad.test"}',
  'https://status.mailgun.com', NOW(), NOW()),
 
 -- Email: AWS SES (fallback)
-('a1000000-0000-0000-0000-000000000002', 'ses',     'email', 'AWS SES', FALSE, 2, TRUE,
+('a1000000-0000-0000-0000-000000000002', 'Ses',     'Email', 'AWS SES', FALSE, 2, TRUE,
  '{"region": "us-east-1", "test_recipient": "health@fanpad.test", "configuration_set": "fanpad-health"}',
  'https://health.aws.amazon.com', NOW(), NOW()),
 
 -- SMS: Twilio (primary)
-('a1000000-0000-0000-0000-000000000003', 'twilio',  'sms',   'Twilio',  TRUE,  1, TRUE,
+('a1000000-0000-0000-0000-000000000003', 'Twilio',  'Sms',   'Twilio',  TRUE,  1, TRUE,
  '{"api_base": "https://api.twilio.com/2010-04-01", "test_to": "+15005550006", "test_from": "+15005550001"}',
  'https://status.twilio.com', NOW(), NOW())
 
@@ -28,8 +28,8 @@ ON CONFLICT (id) DO NOTHING;
 -- ─────────────────────────────────────────────
 
 INSERT INTO routing_states (id, service_type, active_service_config_id, action, reason, changed_at, changed_by) VALUES
-(gen_random_uuid(), 'email', 'a1000000-0000-0000-0000-000000000001', 'auto', 'Initial configuration - Mailgun as primary email provider', NOW(), 'system'),
-(gen_random_uuid(), 'sms',   'a1000000-0000-0000-0000-000000000003', 'auto', 'Initial configuration - Twilio as primary SMS provider',   NOW(), 'system')
+(gen_random_uuid(), 'Email', 'a1000000-0000-0000-0000-000000000001', 'Auto', 'Initial configuration - Mailgun as primary email provider', NOW(), 'system'),
+(gen_random_uuid(), 'Sms',   'a1000000-0000-0000-0000-000000000003', 'Auto', 'Initial configuration - Twilio as primary SMS provider',   NOW(), 'system')
 
 ON CONFLICT (service_type) DO NOTHING;
 

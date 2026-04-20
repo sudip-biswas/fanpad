@@ -32,7 +32,8 @@ export class HealthMonitorService {
   }
 
   triggerEvaluation(provider?: string): Observable<AgentDecision> {
-    const params = provider ? { provider } : {};
+    const params: Record<string, string> = {};
+    if (provider) params['provider'] = provider;
     return this.http.post<AgentDecision>(`${this.base}/health/evaluate`, null, { params });
   }
 
@@ -43,7 +44,8 @@ export class HealthMonitorService {
   // ── Incidents ─────────────────────────────────────────────────────────────
 
   getIncidents(status?: string): Observable<Incident[]> {
-    const params = status ? { status } : {};
+    const params: Record<string, string> = {};
+    if (status) params['status'] = status;
     return this.http.get<Incident[]>(`${this.base}/incidents`, { params });
   }
 

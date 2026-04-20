@@ -30,14 +30,14 @@ public class RoutingController : ControllerBase
         var routes = await _routing.GetAllRoutesAsync(ct);
         return Ok(routes.Select(r => new
         {
-            service_type = r.ServiceType.ToString(),
-            active_provider = r.ActiveServiceConfig?.Provider.ToString(),
-            display_name = r.ActiveServiceConfig?.DisplayName,
-            is_primary = r.ActiveServiceConfig?.IsPrimary,
+            serviceType = r.ServiceType.ToString(),
+            activeProvider = r.ActiveServiceConfig?.Provider.ToString(),
+            displayName = r.ActiveServiceConfig?.DisplayName,
+            isPrimary = r.ActiveServiceConfig?.IsPrimary,
             action = r.Action.ToString(),
             reason = r.Reason,
-            changed_at = r.ChangedAt,
-            changed_by = r.ChangedBy
+            changedAt = r.ChangedAt,
+            changedBy = r.ChangedBy
         }));
     }
 
@@ -51,17 +51,17 @@ public class RoutingController : ControllerBase
             .Select(e => new
             {
                 id = e.Id,
-                service_type = e.ServiceType.ToString(),
-                from_provider = e.FromProvider.ToString(),
-                to_provider = e.ToProvider.ToString(),
+                serviceType = e.ServiceType.ToString(),
+                fromProvider = e.FromProvider.ToString(),
+                toProvider = e.ToProvider.ToString(),
                 authority = e.Authority.ToString(),
-                work_plan = e.WorkPlan,
-                approved_by = e.ApprovedBy,
-                initiated_at = e.InitiatedAt,
-                completed_at = e.CompletedAt,
-                reverted_at = e.RevertedAt,
+                workPlan = e.WorkPlan,
+                approvedBy = e.ApprovedBy,
+                initiatedAt = e.InitiatedAt,
+                completedAt = e.CompletedAt,
+                revertedAt = e.RevertedAt,
                 success = e.Success,
-                is_simulated = e.IsSimulated
+                isSimulated = e.IsSimulated
             })
             .ToListAsync(ct);
 
@@ -79,15 +79,15 @@ public class RoutingController : ControllerBase
             .Select(a => new
             {
                 id = a.Id,
-                service_type = a.ServiceType.ToString(),
-                from_provider = a.FromProvider.ToString(),
-                to_provider = a.ToProvider.ToString(),
-                agent_recommendation = a.AgentRecommendation,
-                work_plan = a.WorkPlan,
+                serviceType = a.ServiceType.ToString(),
+                fromProvider = a.FromProvider.ToString(),
+                toProvider = a.ToProvider.ToString(),
+                agentRecommendation = a.AgentRecommendation,
+                workPlan = a.WorkPlan,
                 status = a.Status,
-                requested_at = a.RequestedAt,
-                expires_at = a.ExpiresAt,
-                agent_decision_id = a.AgentDecisionId
+                requestedAt = a.RequestedAt,
+                expiresAt = a.ExpiresAt,
+                agentDecisionId = a.AgentDecisionId
             })
             .ToListAsync(ct);
 
@@ -124,18 +124,18 @@ public class RoutingController : ControllerBase
         await _hub.Clients.Group(ServiceStatusHub.DashboardGroup)
             .SendAsync(HubEvents.FailoverExecuted, new
             {
-                failover_event_id = failoverEvent.Id,
-                service_type = approval.ServiceType.ToString(),
-                from_provider = approval.FromProvider.ToString(),
-                to_provider = approval.ToProvider.ToString(),
-                approved_by = approval.ReviewedBy,
-                work_plan = approval.WorkPlan
+                failoverEventId = failoverEvent.Id,
+                serviceType = approval.ServiceType.ToString(),
+                fromProvider = approval.FromProvider.ToString(),
+                toProvider = approval.ToProvider.ToString(),
+                approvedBy = approval.ReviewedBy,
+                workPlan = approval.WorkPlan
             }, ct);
 
         return Ok(new
         {
-            approval_id = id,
-            failover_event_id = failoverEvent.Id,
+            approvalId = id,
+            failoverEventId = failoverEvent.Id,
             status = "approved",
             message = $"Failover executed: {approval.FromProvider} → {approval.ToProvider} for {approval.ServiceType}"
         });
@@ -154,7 +154,7 @@ public class RoutingController : ControllerBase
         approval.ReviewedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        return Ok(new { approval_id = id, status = "rejected" });
+        return Ok(new { approvalId = id, status = "rejected" });
     }
 
     /// <summary>POST /api/routing/revert/{serviceType} — Manually revert to primary provider.</summary>
@@ -169,15 +169,15 @@ public class RoutingController : ControllerBase
         await _hub.Clients.Group(ServiceStatusHub.DashboardGroup)
             .SendAsync(HubEvents.FailoverExecuted, new
             {
-                service_type = st.ToString(),
-                active_provider = route.ActiveServiceConfig?.Provider.ToString(),
+                serviceType = st.ToString(),
+                activeProvider = route.ActiveServiceConfig?.Provider.ToString(),
                 reason = route.Reason
             }, ct);
 
         return Ok(new
         {
-            service_type = st.ToString(),
-            active_provider = route.ActiveServiceConfig?.Provider.ToString(),
+            serviceType = st.ToString(),
+            activeProvider = route.ActiveServiceConfig?.Provider.ToString(),
             message = "Reverted to primary provider"
         });
     }

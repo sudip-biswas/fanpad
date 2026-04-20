@@ -36,21 +36,21 @@ public class IncidentController : ControllerBase
             {
                 id = i.Id,
                 provider = i.ServiceConfig!.Provider.ToString(),
-                display_name = i.ServiceConfig.DisplayName,
+                displayName = i.ServiceConfig.DisplayName,
                 title = i.Title,
                 description = i.Description,
                 severity = i.Severity.ToString(),
                 status = i.Status.ToString(),
-                opened_at = i.OpenedAt,
-                resolved_at = i.ResolvedAt,
-                work_plan = i.WorkPlan,
-                is_simulated = i.IsSimulated,
-                simulation_scenario = i.SimulationScenario,
+                openedAt = i.OpenedAt,
+                resolvedAt = i.ResolvedAt,
+                workPlan = i.WorkPlan,
+                isSimulated = i.IsSimulated,
+                simulationScenario = i.SimulationScenario,
                 updates = i.Updates.OrderByDescending(u => u.CreatedAt).Select(u => new
                 {
                     message = u.Message,
                     author = u.Author,
-                    created_at = u.CreatedAt
+                    createdAt = u.CreatedAt
                 })
             })
             .ToListAsync(ct);

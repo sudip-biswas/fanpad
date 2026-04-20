@@ -178,8 +178,52 @@ public class AgentOrchestrationService : IAgentOrchestrationService
     public async Task<AgentDecision> RunScheduledHealthCheckAsync(CancellationToken ct = default)
     {
         _logger.LogInformation("Agent: scheduled health check starting");
+
+        // Always run internal probes first so health_check_results is populated
+        // before the GetSummary endpoint is queried and before the agent evaluates.
+        await RunAllInternalProbesAsync(ct);
+
         var context = new Dictionary<string, object> { ["trigger"] = "scheduled", ["at"] = DateTime.UtcNow };
         return await RunAgentAsync("scheduled", context, ct: ct);
+    }
+
+    private async Task RunAllInternalProbesAsync(CancellationToken ct)
+    {
+        foreach (var probe in _probes)
+        {
+            try
+            {
+                var config = await _db.ServiceConfigs
+                    .FirstOrDefaultAsync(s => s.Provider == probe.Provider && s.IsEnabled, ct);
+                if (config == null) continue;
+
+                var result = await probe.RunInternalProbeAsync(config, ct);
+
+                _db.HealthCheckResults.Add(new HealthCheckResult
+                {
+                    Id = Guid.NewGuid(),
+                    ServiceConfigId = config.Id,
+                    CheckedAt = DateTime.UtcNow,
+                    Status = result.Status,
+                    LatencyMs = result.LatencyMs,
+                    SuccessRate = result.SuccessRate,
+                    ErrorRate = result.ErrorRate,
+                    ErrorCode = result.ErrorCode,
+                    ErrorMessage = result.ErrorMessage,
+                    InternalStatus = result.Status,
+                    ProbeDetailJson = JsonDocument.Parse(JsonSerializer.Serialize(result.Detail ?? new())),
+                    IsSimulated = result.Detail?.ContainsKey("simulated") == true,
+                    SimulationScenario = result.Detail?.TryGetValue("scenario", out var sc) == true ? sc?.ToString() : null
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Internal probe failed for {Provider}", probe.Provider);
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _logger.LogDebug("Internal probes completed for all providers");
     }
 
     public async Task<CampaignGateResult> EvaluateCampaignGateAsync(Guid campaignId, CancellationToken ct = default)

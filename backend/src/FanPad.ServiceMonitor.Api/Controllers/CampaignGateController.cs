@@ -33,13 +33,13 @@ public class CampaignGateController : ControllerBase
             {
                 id = c.Id,
                 name = c.Name,
-                artist_name = c.ArtistName,
-                service_types = c.ServiceTypes.Select(s => s.ToString()),
-                scheduled_at = c.ScheduledAt,
-                gate_status = c.GateStatus.ToString(),
-                gate_checked_at = c.GateCheckedAt,
-                hold_reason = c.HoldReason,
-                created_at = c.CreatedAt
+                artistName = c.ArtistName,
+                serviceTypes = c.ServiceTypes.Select(s => s.ToString()),
+                scheduledAt = c.ScheduledAt,
+                gateStatus = c.GateStatus.ToString(),
+                gateCheckedAt = c.GateCheckedAt,
+                holdReason = c.HoldReason,
+                createdAt = c.CreatedAt
             })
             .ToListAsync(ct);
 
@@ -58,15 +58,15 @@ public class CampaignGateController : ControllerBase
         await _hub.Clients.Group(ServiceStatusHub.DashboardGroup)
             .SendAsync(HubEvents.CampaignGateChanged, new
             {
-                campaign_id = id,
-                campaign_name = campaign.Name,
-                gate_status = result.GateStatus.ToString(),
-                work_plan = result.WorkPlan,
-                channel_results = result.ChannelResults.Select(r => new
+                campaignId = id,
+                campaignName = campaign.Name,
+                gateStatus = result.GateStatus.ToString(),
+                workPlan = result.WorkPlan,
+                channelResults = result.ChannelResults.Select(r => new
                 {
-                    service_type = r.ServiceType.ToString(),
-                    original_provider = r.OriginalProvider.ToString(),
-                    rerouted_to = r.ReroutedToProvider?.ToString(),
+                    serviceType = r.ServiceType.ToString(),
+                    originalProvider = r.OriginalProvider.ToString(),
+                    reroutedTo = r.ReroutedToProvider?.ToString(),
                     status = r.Status.ToString(),
                     reason = r.Reason
                 })
@@ -74,11 +74,11 @@ public class CampaignGateController : ControllerBase
 
         return Ok(new
         {
-            campaign_id = id,
-            gate_status = result.GateStatus.ToString(),
-            work_plan = result.WorkPlan,
-            agent_decision_id = result.AgentDecisionId,
-            channel_results = result.ChannelResults
+            campaignId = id,
+            gateStatus = result.GateStatus.ToString(),
+            workPlan = result.WorkPlan,
+            agentDecisionId = result.AgentDecisionId,
+            channelResults = result.ChannelResults
         });
     }
 
@@ -97,13 +97,13 @@ public class CampaignGateController : ControllerBase
         await _hub.Clients.Group(ServiceStatusHub.DashboardGroup)
             .SendAsync(HubEvents.CampaignGateChanged, new
             {
-                campaign_id = id,
-                campaign_name = campaign.Name,
-                gate_status = "go",
-                work_plan = req.Note ?? "Manually released by operator"
+                campaignId = id,
+                campaignName = campaign.Name,
+                gateStatus = "go",
+                workPlan = req.Note ?? "Manually released by operator"
             }, ct);
 
-        return Ok(new { campaign_id = id, gate_status = "go" });
+        return Ok(new { campaignId = id, gateStatus = "go" });
     }
 }
 
